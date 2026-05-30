@@ -11,27 +11,16 @@ client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 def calculate_confidence(context: dict) -> int:
     score = 0
-
-    # +25 if failure location is identified
     if context['failure_location']['psp'] or context['failure_location']['bank']:
         score += 25
-
-    # +20 if recurring pattern exists
-    if context['historical_pattern']['recurring']:
-        score += 20
-
-    # +20 if blast radius > 80%
-    if context['blast_radius']['failure_rate_percent'] > 80:
-        score += 20
-
-    # +15 if worsening trend
-    if context['timeline']['is_worsening']:
-        score += 15
-
-    # +20 if prior similar incidents exist
     if context['historical_pattern']['similar_incidents_last_30d'] > 0:
         score += 20
-
+    if context['blast_radius']['failure_rate_percent'] > 80:
+        score += 20
+    if context['timeline']['is_worsening']:
+        score += 15
+    if context['historical_pattern']['recurring']:
+        score += 20
     return min(score, 90)
 
 
@@ -39,21 +28,37 @@ def generate_summary(context: dict, incident_title: str) -> dict:
     confidence = calculate_confidence(context)
 
     if confidence >= 80:
-        root_cause_instruction = "Root cause state: CONFIRMED. Output must start with 'Evidence supports:'"
+        root_cause_instruction = "Root Cause Status: Evidence supports: [use careful language, avoid certainty, no 'caused by' or 'due to']"
     elif confidence >= 30:
-        root_cause_instruction = "Root cause state: HYPOTHESIS. Output must use 'Available evidence suggests...' or 'This may indicate...' and end with 'Requires validation.'"
+        root_cause_instruction = "Root Cause Status: Available evidence suggests: [use only: may indicate / could suggest / requires validation / appears consistent with]"
     else:
-        root_cause_instruction = "Root cause state: UNKNOWN. Output must be exactly: 'Available incident context is insufficient to determine root cause.'"
+        root_cause_instruction = "Root Cause Status: Insufficient evidence to determine probable cause."
 
-    prompt = f"""You are the incident explanation engine for PayTrace.
-Your goal is to explain incident context without inventing facts.
+    prompt = f"""You are PayTrace AI.
+Your job is to explain pre-computed incident context.
+You are NOT an investigator. You do NOT compute metrics. You do NOT infer infrastructure conditions.
+You only explain already-computed operational context.
 
-STRICT RULES:
-1. Only state information directly present in the provided context.
-2. Never infer internal conditions unless explicitly supported by context fields.
-3. {root_cause_instruction}
-4. Recommendations must be investigation actions only — no implementation changes without evidence.
-5. Never use phrases like "is causing", "root cause is", "due to infrastructure issues" unless confidence is CONFIRMED.
+SOURCE OF TRUTH:
+All values in incident context are authoritative. Never recount. Never recompute.
+If context says affected_merchants = {context['blast_radius']['affected_merchants']}, always return exactly {context['blast_radius']['affected_merchants']} merchants. Never derive a different number.
+
+FACT VS INTERPRETATION:
+Separate all statements into:
+1. Observed Facts: only values explicitly present in context
+2. Interpretation: explain possible meaning, never present hypotheses as facts
+3. Unknown Information: explicitly state missing evidence
+4. Actions: investigation actions only
+
+ROOT CAUSE RULES:
+Never invent root causes.
+Forbidden unless explicitly in context: server overload, infrastructure failure, database issue, latency spike, configuration error, timeout reason, network failure.
+Do NOT restate incident labels as conclusions.
+Bad: "PSP_TIMEOUT caused the outage"
+Good: "Observed failures are concentrated on the {context['failure_location']['psp'] or context['failure_location']['bank']} payment path. Incident metadata classifies this as the reported failure type. Operational validation is required."
+
+CONFIDENCE: {confidence}/100
+{root_cause_instruction}
 
 INCIDENT CONTEXT:
 - Incident: {incident_title}
@@ -69,18 +74,17 @@ INCIDENT CONTEXT:
 - Similar incidents last 30d: {context['historical_pattern']['similar_incidents_last_30d']}
 - Recurring: {context['historical_pattern']['recurring']}
 - Last occurrence: {context['historical_pattern']['last_occurrence']}
-- Confidence score: {confidence}/100
 
-Return output in EXACTLY this JSON structure, nothing else:
+Return EXACTLY this JSON, nothing else:
 {{
-    "incident_overview": "Only confirmed facts from context. No inferences.",
-    "suspected_root_cause": "Follow the root cause state instruction above exactly.",
+    "incident_overview": "Confirmed facts only. No inferences. No restatement of incident labels as conclusions.",
+    "suspected_root_cause": "{root_cause_instruction}",
     "blast_radius": {{
         "affected_merchants": {context['blast_radius']['affected_merchants']},
         "affected_psp": "{context['failure_location']['psp']}",
         "affected_bank": "{context['failure_location']['bank']}"
     }},
-    "severity_assessment": "Based only on failure rate and affected merchant count from context.",
+    "severity_assessment": "Based only on failure rate and merchant count from context.",
     "recommended_actions": ["Investigation actions only. No implementation changes without evidence."],
     "confidence_score": {confidence / 100}
 }}"""
@@ -118,7 +122,7 @@ def fallback_summary(context: dict, incident_title: str) -> dict:
     confidence = calculate_confidence(context)
     return {
         "incident_overview": f"{incident_title}. {context['blast_radius']['total_failed_transactions']} transactions failed across {context['blast_radius']['affected_merchants']} merchants.",
-        "suspected_root_cause": "Available incident context is insufficient to determine root cause.",
+        "suspected_root_cause": "Insufficient evidence to determine probable cause.",
         "blast_radius": {
             "affected_merchants": context['blast_radius']['affected_merchants'],
             "affected_psp": context['failure_location']['psp'],
