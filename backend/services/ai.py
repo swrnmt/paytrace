@@ -9,19 +9,51 @@ from groq import Groq
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 
+def calculate_confidence(context: dict) -> int:
+    score = 0
+
+    # +25 if failure location is identified
+    if context['failure_location']['psp'] or context['failure_location']['bank']:
+        score += 25
+
+    # +20 if recurring pattern exists
+    if context['historical_pattern']['recurring']:
+        score += 20
+
+    # +20 if blast radius > 80%
+    if context['blast_radius']['failure_rate_percent'] > 80:
+        score += 20
+
+    # +15 if worsening trend
+    if context['timeline']['is_worsening']:
+        score += 15
+
+    # +20 if prior similar incidents exist
+    if context['historical_pattern']['similar_incidents_last_30d'] > 0:
+        score += 20
+
+    return min(score, 90)
+
+
 def generate_summary(context: dict, incident_title: str) -> dict:
+    confidence = calculate_confidence(context)
+
+    if confidence >= 80:
+        root_cause_instruction = "Root cause state: CONFIRMED. Output must start with 'Evidence supports:'"
+    elif confidence >= 30:
+        root_cause_instruction = "Root cause state: HYPOTHESIS. Output must use 'Available evidence suggests...' or 'This may indicate...' and end with 'Requires validation.'"
+    else:
+        root_cause_instruction = "Root cause state: UNKNOWN. Output must be exactly: 'Available incident context is insufficient to determine root cause.'"
+
     prompt = f"""You are the incident explanation engine for PayTrace.
-Your job is NOT to diagnose incidents, infer infrastructure conditions, or invent causes.
-You MUST only explain the structured investigation context provided.
+Your goal is to explain incident context without inventing facts.
 
 STRICT RULES:
-1. Never state root causes as facts unless explicitly present in the context.
-2. Never infer internal conditions (server overload, latency spikes, bad configuration, infra failures, database issues, etc.) unless directly supported by provided fields.
-3. Separate observations from hypotheses.
-4. If evidence is missing, explicitly say that the information is unavailable.
-5. Recommendations must be operationally safe and based only on available context.
-6. Confidence should decrease when context is incomplete.
-7. Never use phrases like "is causing", "root cause is", "due to infrastructure issues" unless supported by evidence.
+1. Only state information directly present in the provided context.
+2. Never infer internal conditions unless explicitly supported by context fields.
+3. {root_cause_instruction}
+4. Recommendations must be investigation actions only — no implementation changes without evidence.
+5. Never use phrases like "is causing", "root cause is", "due to infrastructure issues" unless confidence is CONFIRMED.
 
 INCIDENT CONTEXT:
 - Incident: {incident_title}
@@ -37,19 +69,20 @@ INCIDENT CONTEXT:
 - Similar incidents last 30d: {context['historical_pattern']['similar_incidents_last_30d']}
 - Recurring: {context['historical_pattern']['recurring']}
 - Last occurrence: {context['historical_pattern']['last_occurrence']}
+- Confidence score: {confidence}/100
 
 Return output in EXACTLY this JSON structure, nothing else:
 {{
-    "incident_overview": "Only confirmed facts. No inferences.",
-    "suspected_root_cause": "Use may indicate or could suggest language only. If insufficient evidence say: Available incident context is insufficient to determine root cause.",
+    "incident_overview": "Only confirmed facts from context. No inferences.",
+    "suspected_root_cause": "Follow the root cause state instruction above exactly.",
     "blast_radius": {{
         "affected_merchants": {context['blast_radius']['affected_merchants']},
         "affected_psp": "{context['failure_location']['psp']}",
         "affected_bank": "{context['failure_location']['bank']}"
     }},
-    "severity_assessment": "Based only on failure rate and affected merchant count.",
+    "severity_assessment": "Based only on failure rate and affected merchant count from context.",
     "recommended_actions": ["Investigation actions only. No implementation changes without evidence."],
-    "confidence_score": 0.0
+    "confidence_score": {confidence / 100}
 }}"""
 
     try:
@@ -82,8 +115,9 @@ Return output in EXACTLY this JSON structure, nothing else:
 
 
 def fallback_summary(context: dict, incident_title: str) -> dict:
+    confidence = calculate_confidence(context)
     return {
-        "incident_overview": f"Incident detected: {incident_title}. {context['blast_radius']['total_failed_transactions']} transactions failed across {context['blast_radius']['affected_merchants']} merchants.",
+        "incident_overview": f"{incident_title}. {context['blast_radius']['total_failed_transactions']} transactions failed across {context['blast_radius']['affected_merchants']} merchants.",
         "suspected_root_cause": "Available incident context is insufficient to determine root cause.",
         "blast_radius": {
             "affected_merchants": context['blast_radius']['affected_merchants'],
@@ -96,5 +130,5 @@ def fallback_summary(context: dict, incident_title: str) -> dict:
             "Review recent transaction failure logs",
             "Contact PSP support if issue persists",
         ],
-        "confidence_score": 0.0,
+        "confidence_score": confidence / 100,
     }
