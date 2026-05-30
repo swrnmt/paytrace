@@ -1,65 +1,108 @@
-import Image from "next/image";
+"use client";
+
+import { useQuery } from "@tanstack/react-query";
+import { getIncidents, Incident } from "@/lib/api";
+import { useRouter } from "next/navigation";
+import { AlertTriangle, CheckCircle, Clock, Activity } from "lucide-react";
+
+// Color coding for each severity level
+const severityConfig = {
+  CRITICAL: { color: "bg-red-500", text: "text-red-500", border: "border-red-500" },
+  HIGH: { color: "bg-orange-500", text: "text-orange-500", border: "border-orange-500" },
+  MEDIUM: { color: "bg-yellow-500", text: "text-yellow-500", border: "border-yellow-500" },
+  LOW: { color: "bg-green-500", text: "text-green-500", border: "border-green-500" },
+};
+
+const statusIcon = (status: string) => {
+  if (status === "RESOLVED") return <CheckCircle className="w-4 h-4 text-green-500" />;
+  if (status === "INVESTIGATING") return <Activity className="w-4 h-4 text-orange-500" />;
+  return <AlertTriangle className="w-4 h-4 text-red-500" />;
+};
+
+function IncidentCard({ incident }: { incident: Incident }) {
+  const router = useRouter();
+  const config = severityConfig[incident.severity];
+
+  return (
+    <div
+      onClick={() => router.push(`/incidents/${incident.id}`)}
+      className={`bg-zinc-900 border-l-4 ${config.border} rounded-lg p-5 cursor-pointer hover:bg-zinc-800 transition-all`}
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-2">
+            <span className={`text-xs font-bold px-2 py-0.5 rounded ${config.color} text-white`}>
+              {incident.severity}
+            </span>
+            <div className="flex items-center gap-1">
+              {statusIcon(incident.status)}
+              <span className="text-xs text-zinc-400">{incident.status}</span>
+            </div>
+          </div>
+          <h3 className="text-white font-medium text-sm">{incident.title}</h3>
+          <div className="flex items-center gap-3 mt-2 text-xs text-zinc-500">
+            {incident.psp && <span>PSP: {incident.psp}</span>}
+            {incident.bank && <span>Bank: {incident.bank}</span>}
+            <div className="flex items-center gap-1">
+              <Clock className="w-3 h-3" />
+              <span>{new Date(incident.started_at).toLocaleString()}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function Home() {
+  const { data: incidents, isLoading, isError } = useQuery({
+    queryKey: ["incidents"],
+    queryFn: getIncidents,
+  });
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <main className="min-h-screen bg-zinc-950 text-white">
+      {/* Header */}
+      <div className="border-b border-zinc-800 px-6 py-4">
+        <div className="max-w-4xl mx-auto flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-white">PayTrace</h1>
+            <p className="text-xs text-zinc-500">Payment Incident Investigation</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+            <span className="text-xs text-zinc-400">Live</span>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      </div>
+
+      {/* Content */}
+      <div className="max-w-4xl mx-auto px-6 py-8">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-lg font-semibold">Active Incidents</h2>
+          {incidents && (
+            <span className="text-xs text-zinc-500">{incidents.length} total</span>
+          )}
         </div>
-      </main>
-    </div>
+
+        {isLoading && (
+          <div className="text-center py-20 text-zinc-500">Loading incidents...</div>
+        )}
+
+        {isError && (
+          <div className="text-center py-20 text-red-400">
+            Could not connect to backend. Make sure uvicorn is running.
+          </div>
+        )}
+
+        {incidents && (
+          <div className="flex flex-col gap-3">
+            {incidents.map((incident) => (
+              <IncidentCard key={incident.id} incident={incident} />
+            ))}
+          </div>
+        )}
+      </div>
+    </main>
   );
 }
