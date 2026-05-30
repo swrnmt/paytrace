@@ -3,7 +3,7 @@ import axios from "axios";
 // All API calls go through this base URL
 // We'll change this to the deployed URL later
 const api = axios.create({
-  baseURL: "http://127.0.0.1:8000",
+  baseURL: "https://paytrace-backend.onrender.com",
 });
 
 export interface Incident {
