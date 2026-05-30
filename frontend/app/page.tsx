@@ -5,7 +5,6 @@ import { getIncidents, Incident } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, CheckCircle, Clock, Activity } from "lucide-react";
 
-// Color coding for each severity level
 const severityConfig = {
   CRITICAL: { color: "bg-red-500", text: "text-red-500", border: "border-red-500" },
   HIGH: { color: "bg-orange-500", text: "text-orange-500", border: "border-orange-500" },
@@ -58,11 +57,11 @@ export default function Home() {
   const { data: incidents, isLoading, isError } = useQuery({
     queryKey: ["incidents"],
     queryFn: getIncidents,
+    refetchInterval: 30000, // automatically refetch every 30 seconds
   });
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white">
-      {/* Header */}
       <div className="border-b border-zinc-800 px-6 py-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div>
@@ -76,7 +75,6 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Content */}
       <div className="max-w-4xl mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-lg font-semibold">Active Incidents</h2>
