@@ -137,6 +137,15 @@ The AI will never make up merchant names, transaction counts, or root causes. If
 
 ---
 
+## Future Extensions
+
+- Settlement anomaly investigation
+- Reconciliation exception analysis
+- Merchant health monitoring
+- UPI success-rate monitoring
+- PSP degradation detection
+
+---
 ## Running Locally
 
 **Backend:**
