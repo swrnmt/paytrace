@@ -8,10 +8,8 @@ import {
   getIncidentContext,
   getAISummary,
   sendChatMessage,
-  getChatHistory,
 } from "@/lib/api";
 import {
-  AlertTriangle,
   Clock,
   Zap,
   TrendingUp,
@@ -28,6 +26,24 @@ const severityColor = {
   MEDIUM: "text-yellow-500 border-yellow-500",
   LOW: "text-green-500 border-green-500",
 };
+
+function formatDuration(minutes: number): string {
+  if (minutes < 60) return `${minutes}m`;
+  if (minutes < 1440) {
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  }
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+}
+
+const EXAMPLE_QUESTIONS = [
+  "Which merchants are most affected?",
+  "Who is impacted?",
+  "What should we check first?",
+];
 
 export default function IncidentPage() {
   const { id } = useParams();
@@ -61,10 +77,11 @@ export default function IncidentPage() {
     },
   });
 
-  const handleSend = () => {
-    if (!message.trim()) return;
-    setChatMessages((prev) => [...prev, { role: "user", content: message }]);
-    chatMutation.mutate(message);
+  const handleSend = (msg?: string) => {
+    const text = msg || message;
+    if (!text.trim()) return;
+    setChatMessages((prev) => [...prev, { role: "user", content: text }]);
+    chatMutation.mutate(text);
     setMessage("");
   };
 
@@ -97,10 +114,9 @@ export default function IncidentPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-6 grid grid-cols-3 gap-6">
-        {/* LEFT COLUMN — Context + Summary */}
+        {/* LEFT COLUMN */}
         <div className="col-span-2 flex flex-col gap-6">
 
-          {/* Context Panel */}
           {contextLoading && (
             <div className="bg-zinc-900 rounded-lg p-6 text-zinc-500 text-sm">
               Loading context...
@@ -112,20 +128,18 @@ export default function IncidentPage() {
               <h2 className="text-sm font-semibold text-zinc-300 mb-4">Investigation Context</h2>
               <div className="grid grid-cols-2 gap-4">
 
-                {/* Timeline */}
                 <div className="bg-zinc-800 rounded-lg p-4">
                   <div className="flex items-center gap-2 mb-3">
                     <Clock className="w-4 h-4 text-blue-400" />
                     <span className="text-xs font-semibold text-zinc-300">Timeline</span>
                   </div>
-                  <p className="text-2xl font-bold text-white">{context.timeline.duration_minutes}m</p>
+                  <p className="text-2xl font-bold text-white">{formatDuration(context.timeline.duration_minutes)}</p>
                   <p className="text-xs text-zinc-500 mt-1">Duration</p>
                   {context.timeline.is_worsening && (
                     <span className="text-xs text-red-400 mt-2 block">Worsening</span>
                   )}
                 </div>
 
-                {/* Blast Radius */}
                 <div className="bg-zinc-800 rounded-lg p-4">
                   <div className="flex items-center gap-2 mb-3">
                     <Zap className="w-4 h-4 text-orange-400" />
@@ -136,7 +150,6 @@ export default function IncidentPage() {
                   <p className="text-xs text-zinc-500">{context.blast_radius.affected_merchants} merchants · {context.blast_radius.total_failed_transactions} failed txns</p>
                 </div>
 
-                {/* Failure Location */}
                 <div className="bg-zinc-800 rounded-lg p-4">
                   <div className="flex items-center gap-2 mb-3">
                     <Building2 className="w-4 h-4 text-purple-400" />
@@ -153,7 +166,6 @@ export default function IncidentPage() {
                   )}
                 </div>
 
-                {/* Historical Pattern */}
                 <div className="bg-zinc-800 rounded-lg p-4">
                   <div className="flex items-center gap-2 mb-3">
                     <TrendingUp className="w-4 h-4 text-green-400" />
@@ -170,7 +182,7 @@ export default function IncidentPage() {
             </div>
           )}
 
-          {/* AI Summary Panel */}
+          {/* AI Summary */}
           <div className="bg-zinc-900 rounded-lg p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-sm font-semibold text-zinc-300">AI Summary</h2>
@@ -235,13 +247,23 @@ export default function IncidentPage() {
               <p className="text-xs text-zinc-600 mt-0.5">Ask questions about this incident</p>
             </div>
 
-            {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
+              {/* Example questions shown when chat is empty */}
               {chatMessages.length === 0 && (
-                <div className="text-xs text-zinc-600 text-center mt-4">
-                  Ask anything about this incident
+                <div className="flex flex-col gap-2 mt-2">
+                  <p className="text-xs text-zinc-600 mb-1">Try asking:</p>
+                  {EXAMPLE_QUESTIONS.map((q, i) => (
+                    <button
+                      key={i}
+                      onClick={() => handleSend(q)}
+                      className="text-left text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 px-3 py-2 rounded-lg transition-colors"
+                    >
+                      {q}
+                    </button>
+                  ))}
                 </div>
               )}
+
               {chatMessages.map((msg, i) => (
                 <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
                   <div className={`max-w-[85%] rounded-lg px-3 py-2 text-xs ${
@@ -253,6 +275,7 @@ export default function IncidentPage() {
                   </div>
                 </div>
               ))}
+
               {chatMutation.isPending && (
                 <div className="flex justify-start">
                   <div className="bg-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-500">
@@ -262,7 +285,6 @@ export default function IncidentPage() {
               )}
             </div>
 
-            {/* Input */}
             <div className="p-4 border-t border-zinc-800 flex gap-2">
               <input
                 value={message}
@@ -272,7 +294,7 @@ export default function IncidentPage() {
                 className="flex-1 bg-zinc-800 rounded-lg px-3 py-2 text-xs text-white placeholder-zinc-600 outline-none focus:ring-1 focus:ring-zinc-600"
               />
               <button
-                onClick={handleSend}
+                onClick={() => handleSend()}
                 disabled={chatMutation.isPending}
                 className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-lg p-2 transition-colors"
               >
