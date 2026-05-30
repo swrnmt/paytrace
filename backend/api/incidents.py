@@ -10,8 +10,6 @@ from services.chat import chat
 router = APIRouter()
 
 
-# Pydantic model — validates the request body for the chat endpoint
-# When someone POSTs to /chat, FastAPI checks that "message" is present
 class ChatRequest(BaseModel):
     message: str
 
@@ -38,6 +36,57 @@ def list_incidents(db: Session = Depends(get_db)):
         })
 
     return result
+
+
+# simulate must be ABOVE /{incident_id} routes or FastAPI treats "simulate" as an ID
+@router.post("/incidents/simulate")
+def simulate_incident(db: Session = Depends(get_db)):
+    import random
+    from datetime import datetime, timezone
+    from models import PSP, Bank
+
+    psps = db.query(PSP).all()
+    banks = db.query(Bank).all()
+
+    incident_types = [
+        ("PSP timeout storm — PSP_TIMEOUT surging", "CRITICAL", "psp"),
+        ("Bank outage — BANK_DOWN on majority of transactions", "CRITICAL", "bank"),
+        ("Webhook retry storm — top merchants failing delivery", "HIGH", "psp"),
+        ("High latency surge — p99 exceeding 2000ms", "HIGH", "psp"),
+        ("Merchant degradation — elevated failure rate detected", "MEDIUM", "bank"),
+    ]
+
+    title_template, severity, culprit = random.choice(incident_types)
+    psp = random.choice(psps)
+    bank = random.choice(banks)
+
+    if culprit == "psp":
+        title = f"{psp.name} {title_template}"
+        psp_id = psp.id
+        bank_id = None
+    else:
+        title = f"{bank.name} {title_template}"
+        psp_id = None
+        bank_id = bank.id
+
+    incident = Incident(
+        title=title,
+        severity=severity,
+        status="OPEN",
+        psp_id=psp_id,
+        bank_id=bank_id,
+        started_at=datetime.now(timezone.utc),
+        resolved_at=None,
+    )
+    db.add(incident)
+    db.commit()
+
+    return {
+        "id": str(incident.id),
+        "title": incident.title,
+        "severity": incident.severity,
+        "status": incident.status,
+    }
 
 
 @router.get("/incidents/{incident_id}")
@@ -114,45 +163,3 @@ def get_chat_history(incident_id: str, db: Session = Depends(get_db)):
         }
         for h in history
     ]
-  @router.post("/incidents/simulate")
-def simulate_incident(db: Session = Depends(get_db)):
-    import random
-    from datetime import datetime, timezone
-    from models import PSP, Bank
-
-    psps = db.query(PSP).all()
-    banks = db.query(Bank).all()
-
-    incident_types = [
-        ("PSP timeout storm — PSP_TIMEOUT surging", "CRITICAL"),
-        ("Bank outage — BANK_DOWN on majority of transactions", "CRITICAL"),
-        ("Webhook retry storm — top merchants failing delivery", "HIGH"),
-        ("High latency surge — p99 exceeding 2000ms", "HIGH"),
-        ("Merchant degradation — elevated failure rate detected", "MEDIUM"),
-    ]
-
-    title_template, severity = random.choice(incident_types)
-    psp = random.choice(psps)
-    bank = random.choice(banks)
-
-    # Add PSP or bank name to title
-    title = f"{psp.name} {title_template}" if "PSP" in title_template else f"{bank.name} {title_template}"
-
-    incident = Incident(
-        title=title,
-        severity=severity,
-        status="OPEN",
-        psp_id=psp.id if "PSP" in title_template else None,
-        bank_id=bank.id if "PSP" not in title_template else None,
-        started_at=datetime.now(timezone.utc),
-        resolved_at=None,
-    )
-    db.add(incident)
-    db.commit()
-
-    return {
-        "id": str(incident.id),
-        "title": incident.title,
-        "severity": incident.severity,
-        "status": incident.status,
-    }
