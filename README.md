@@ -45,15 +45,17 @@ This separation means:
 - The investigation surface works even if the AI is down
 - Accuracy is enforced at the data layer, not the prompt layer
 
+```
 Incident opened
-↓
+      ↓
 Backend computes 4-context bundle (SQL queries)
-↓
+      ↓
 Context injected into LLM prompt
-↓
+      ↓
 LLM explains — never computes
-↓
+      ↓
 Ops user asks follow-up → same scoped context passed to LLM
+```
 
 ---
 
@@ -80,10 +82,11 @@ Ops user asks follow-up → same scoped context passed to LLM
 - **What was the blast radius** — `transactions` indexed on `(incident_id, status)`
 - **Has this happened before** — `incidents` filtered by `psp_id` or `bank_id` in a 30-day window
 
-merchants ──┐
-psps ────────┼──→ transactions ──→ incident_transactions ──→ incidents
-banks ───────┤                                                    ↓
-rails ───────┘                                          incident_chat_history
+- merchants → transactions
+- psps → transactions → incident_transactions → incidents
+- banks → transactions                               ↓
+- rails → transactions                     incident_chat_history
+
 
 Key design decision: `psp_id` and `bank_id` are denormalized onto the `incidents` table. This makes historical pattern queries a simple WHERE clause instead of an expensive aggregation through transactions.
 
