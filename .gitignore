@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Environment variables — NEVER commit these
+backend/.env
+
+# Node
+frontend/node_modules/
+frontend/.next/
