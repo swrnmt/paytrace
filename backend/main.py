@@ -6,13 +6,15 @@ app = FastAPI(title="PayTrace API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "https://paytrace-three.vercel.app",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Register the incidents router — all routes inside it are now active
 app.include_router(incidents_router)
 
 
