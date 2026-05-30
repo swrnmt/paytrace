@@ -1,9 +1,10 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getIncidents, Incident } from "@/lib/api";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, CheckCircle, Clock, Activity } from "lucide-react";
+import { AlertTriangle, CheckCircle, Clock, Activity, Plus } from "lucide-react";
+import axios from "axios";
 
 const severityConfig = {
   CRITICAL: { color: "bg-red-500", text: "text-red-500", border: "border-red-500" },
@@ -54,33 +55,79 @@ function IncidentCard({ incident }: { incident: Incident }) {
 }
 
 export default function Home() {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+
   const { data: incidents, isLoading, isError } = useQuery({
     queryKey: ["incidents"],
     queryFn: getIncidents,
-    refetchInterval: 30000, // automatically refetch every 30 seconds
+    refetchInterval: 30000,
   });
+
+  const simulateMutation = useMutation({
+    mutationFn: async () => {
+      const res = await axios.post("https://paytrace-backend.onrender.com/incidents/simulate");
+      return res.data;
+    },
+    onSuccess: (data) => {
+      // Immediately refetch the incident list so the new one appears
+      queryClient.invalidateQueries({ queryKey: ["incidents"] });
+      // Navigate to the new incident
+      router.push(`/incidents/${data.id}`);
+    },
+  });
+
+  const openCount = incidents?.filter(i => i.status === "OPEN").length ?? 0;
+  const criticalCount = incidents?.filter(i => i.severity === "CRITICAL").length ?? 0;
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white">
+      {/* Header */}
       <div className="border-b border-zinc-800 px-6 py-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-white">PayTrace</h1>
             <p className="text-xs text-zinc-500">Payment Incident Investigation</p>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-            <span className="text-xs text-zinc-400">Live</span>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              <span className="text-xs text-zinc-400">Live</span>
+            </div>
           </div>
         </div>
       </div>
 
       <div className="max-w-4xl mx-auto px-6 py-8">
+
+        {/* Stats bar */}
+        {incidents && (
+          <div className="grid grid-cols-3 gap-4 mb-8">
+            <div className="bg-zinc-900 rounded-lg p-4">
+              <p className="text-2xl font-bold text-white">{incidents.length}</p>
+              <p className="text-xs text-zinc-500 mt-1">Total incidents</p>
+            </div>
+            <div className="bg-zinc-900 rounded-lg p-4">
+              <p className="text-2xl font-bold text-red-400">{openCount}</p>
+              <p className="text-xs text-zinc-500 mt-1">Open right now</p>
+            </div>
+            <div className="bg-zinc-900 rounded-lg p-4">
+              <p className="text-2xl font-bold text-orange-400">{criticalCount}</p>
+              <p className="text-xs text-zinc-500 mt-1">Critical severity</p>
+            </div>
+          </div>
+        )}
+
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-lg font-semibold">Active Incidents</h2>
-          {incidents && (
-            <span className="text-xs text-zinc-500">{incidents.length} total</span>
-          )}
+          <button
+            onClick={() => simulateMutation.mutate()}
+            disabled={simulateMutation.isPending}
+            className="flex items-center gap-2 text-xs bg-red-600 hover:bg-red-500 disabled:opacity-50 px-3 py-2 rounded-lg transition-colors"
+          >
+            <Plus className="w-3 h-3" />
+            {simulateMutation.isPending ? "Simulating..." : "Simulate Incident"}
+          </button>
         </div>
 
         {isLoading && (
