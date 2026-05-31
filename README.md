@@ -117,9 +117,9 @@ Every user question goes through this flow:
 5. Inject only this context into the LLM prompt
 6. Return grounded response
 
-System prompt enforces: *"Answer ONLY using the provided operational context. If information is not in the context, say so."*
+System prompt enforces: "Explain only what is explicitly present in the context. Never recount, recompute, or infer distributions. If data is missing, state what is missing and what computation would be required."
 
-The AI will never make up merchant names, transaction counts, or root causes. If the data doesn't support an answer, it says so.
+The AI will never make up merchant names, transaction counts, or root causes. If the data doesn't support an answer, it explicitly states what is missing and what would be needed to answer.
 
 ---
 
