@@ -8,13 +8,14 @@ def get_timeline(incident: Incident) -> dict:
 
     duration = (now - incident.started_at).total_seconds() / 60
 
-    # An incident is only considered worsening if:
-    # 1. It is still OPEN or INVESTIGATING
-    # 2. It started less than 48 hours ago
-    # Incidents older than 48 hours are too stale to call "worsening"
+    # Worsening only if:
+    # 1. Still OPEN or INVESTIGATING
+    # 2. Running for more than 30 minutes (too new = not enough signal)
+    # 3. Less than 48 hours old (too old = should be resolved by now)
     is_worsening = (
         incident.status != "RESOLVED"
-        and duration < 2880  # 2880 minutes = 48 hours
+        and duration > 30
+        and duration < 2880
     )
 
     return {
