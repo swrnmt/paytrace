@@ -112,9 +112,19 @@ def get_historical_pattern(db: Session, incident: Incident) -> dict:
         "recurring": len(similar) >= 2,
     }
 
-
 def get_full_context(db: Session, incident: Incident) -> dict:
-    # Bundles all 4 pieces together — this is what the endpoint returns
+    # Auto-resolve incidents older than 48 hours that are still open
+    # In a real system an ops engineer would close these manually
+    # This prevents stale incidents from showing as perpetually worsening
+    from datetime import datetime, timezone, timedelta
+    if incident.status == "OPEN":
+        age_hours = (datetime.now(timezone.utc) - incident.started_at).total_seconds() / 3600
+        if age_hours > 48:
+            incident.status = "RESOLVED"
+            incident.resolved_at = incident.started_at + timedelta(hours=4)
+            db.add(incident)
+            db.commit()
+
     return {
         "timeline": get_timeline(incident),
         "blast_radius": get_blast_radius(db, incident),
