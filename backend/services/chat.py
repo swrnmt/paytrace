@@ -81,19 +81,46 @@ def build_context_packet(db: Session, incident: Incident) -> str:
     txns = (
         db.query(Transaction)
         .filter(Transaction.incident_id == incident.id)
-        .limit(20)
         .all()
     )
 
-    txn_lines = []
+    # Build merchant-level breakdown
+    merchant_failure_map = {}
     for t in txns:
+        if t.merchant_id not in merchant_failure_map:
+            merchant_failure_map[t.merchant_id] = {"total": 0, "failed": 0, "name": ""}
+        merchant_failure_map[t.merchant_id]["total"] += 1
+        if t.status not in ("SUCCESS",):
+            merchant_failure_map[t.merchant_id]["failed"] += 1
+
+    # Fetch merchant names
+    if merchant_failure_map:
+        merchants = db.query(Merchant).filter(
+            Merchant.id.in_(list(merchant_failure_map.keys()))
+        ).all()
+        for m in merchants:
+            if m.id in merchant_failure_map:
+                merchant_failure_map[m.id]["name"] = m.name
+
+    # Build merchant impact lines
+    merchant_lines = []
+    for mid, data in merchant_failure_map.items():
+        rate = round((data["failed"] / data["total"]) * 100, 1) if data["total"] > 0 else 0
+        merchant_lines.append(
+            f"- {data['name']}: {data['failed']} failed / {data['total']} total ({rate}% failure rate)"
+        )
+
+    # Sample transactions for context
+    sample_txns = txns[:20]
+    txn_lines = []
+    for t in sample_txns:
         txn_lines.append(
             f"- txn {str(t.id)[:8]}: status={t.status}, latency={t.latency_ms}ms, amount={t.amount}"
         )
 
-    merchant_ids = list(set(t.merchant_id for t in txns))
-    merchants = db.query(Merchant).filter(Merchant.id.in_(merchant_ids)).all()
-    merchant_names = [m.name for m in merchants]
+    total_txns = len(txns)
+    failed_txns = sum(1 for t in txns if t.status not in ("SUCCESS",))
+    failure_rate = round((failed_txns / total_txns) * 100, 1) if total_txns > 0 else 0
 
     context = f"""
 INCIDENT: {incident.title}
@@ -103,14 +130,19 @@ Started: {incident.started_at.isoformat()}
 PSP: {incident.psp.name if incident.psp else 'N/A'}
 Bank: {incident.bank.name if incident.bank else 'N/A'}
 
-AFFECTED MERCHANTS ({len(merchant_names)} total — use this exact count):
-{', '.join(merchant_names) if merchant_names else 'No merchant data available for this incident yet.'}
+BLAST RADIUS (authoritative — use these exact numbers):
+- Total transactions: {total_txns}
+- Failed transactions: {failed_txns}
+- Failure rate: {failure_rate}%
+- Affected merchants: {len(merchant_failure_map)}
 
-SAMPLE TRANSACTIONS ({len(txns)} shown):
+MERCHANT-LEVEL BREAKDOWN ({len(merchant_lines)} merchants):
+{chr(10).join(merchant_lines) if merchant_lines else 'No merchant data available for this incident yet.'}
+
+SAMPLE TRANSACTIONS ({len(sample_txns)} shown):
 {chr(10).join(txn_lines) if txn_lines else 'No transaction data available for this incident yet.'}
 
 MISSING FROM THIS CONTEXT (never infer these):
-- Merchant-level failure distribution
 - PSP latency metrics
 - Infrastructure health status
 - Error logs or traces

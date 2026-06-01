@@ -42,8 +42,8 @@ def list_incidents(db: Session = Depends(get_db)):
 @router.post("/incidents/simulate")
 def simulate_incident(db: Session = Depends(get_db)):
     import random
-    from datetime import datetime, timezone
-    from models import PSP, Bank
+    from datetime import datetime, timezone, timedelta
+    from models import PSP, Bank, Transaction, IncidentTransaction
 
     psps = db.query(PSP).all()
     banks = db.query(Bank).all()
@@ -64,10 +64,57 @@ def simulate_incident(db: Session = Depends(get_db)):
         title = f"{psp.name} {title_template}"
         psp_id = psp.id
         bank_id = None
+        # Grab real transactions for this PSP from the last 7 days
+        cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+        txns = (
+            db.query(Transaction)
+            .filter(
+                Transaction.psp_id == psp.id,
+                Transaction.created_at >= cutoff,
+                Transaction.incident_id == None,
+            )
+            .limit(40)
+            .all()
+        )
     else:
         title = f"{bank.name} {title_template}"
         psp_id = None
         bank_id = bank.id
+        cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+        txns = (
+            db.query(Transaction)
+            .filter(
+                Transaction.bank_id == bank.id,
+                Transaction.created_at >= cutoff,
+                Transaction.incident_id == None,
+            )
+            .limit(40)
+            .all()
+        )
+
+    # If no transactions in last 7 days, go back 30 days
+    if not txns:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+        if culprit == "psp":
+            txns = (
+                db.query(Transaction)
+                .filter(
+                    Transaction.psp_id == psp.id,
+                    Transaction.incident_id == None,
+                )
+                .limit(40)
+                .all()
+            )
+        else:
+            txns = (
+                db.query(Transaction)
+                .filter(
+                    Transaction.bank_id == bank.id,
+                    Transaction.incident_id == None,
+                )
+                .limit(40)
+                .all()
+            )
 
     incident = Incident(
         title=title,
@@ -79,6 +126,35 @@ def simulate_incident(db: Session = Depends(get_db)):
         resolved_at=None,
     )
     db.add(incident)
+    db.flush()
+
+    # Degrade a portion of transactions and link them to this incident
+    failed_statuses = {
+        "PSP timeout storm": "PSP_TIMEOUT",
+        "Bank outage": "BANK_DOWN",
+        "Webhook retry storm": "WEBHOOK_RETRY",
+        "High latency surge": "HIGH_LATENCY",
+        "Merchant degradation": "FAILED",
+    }
+
+    # Pick the right status based on title
+    new_status = "FAILED"
+    for key, status in failed_statuses.items():
+        if key.lower() in title_template.lower():
+            new_status = status
+            break
+
+    # Degrade 60-80% of the grabbed transactions
+    degrade_rate = random.uniform(0.6, 0.8)
+    for txn in txns:
+        if random.random() < degrade_rate:
+            txn.status = new_status
+            txn.incident_id = incident.id
+            db.add(IncidentTransaction(
+                incident_id=incident.id,
+                transaction_id=txn.id,
+            ))
+
     db.commit()
 
     return {
@@ -87,7 +163,6 @@ def simulate_incident(db: Session = Depends(get_db)):
         "severity": incident.severity,
         "status": incident.status,
     }
-
 
 @router.get("/incidents/{incident_id}")
 def get_incident(incident_id: str, db: Session = Depends(get_db)):

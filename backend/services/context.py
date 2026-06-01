@@ -6,12 +6,16 @@ from models import Transaction, Incident, IncidentTransaction, Merchant
 def get_timeline(incident: Incident) -> dict:
     now = datetime.now(timezone.utc)
 
-    # How many minutes since the incident started
     duration = (now - incident.started_at).total_seconds() / 60
 
-    # We consider it "worsening" if it's been open more than 60 minutes
-    # and still not resolved
-    is_worsening = incident.status != "RESOLVED" and duration > 60
+    # An incident is only considered worsening if:
+    # 1. It is still OPEN or INVESTIGATING
+    # 2. It started less than 48 hours ago
+    # Incidents older than 48 hours are too stale to call "worsening"
+    is_worsening = (
+        incident.status != "RESOLVED"
+        and duration < 2880  # 2880 minutes = 48 hours
+    )
 
     return {
         "started_at": incident.started_at.isoformat(),

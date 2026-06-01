@@ -12,9 +12,13 @@ client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 def calculate_confidence(context: dict) -> int:
     """
     Confidence reflects evidence quality only.
-    Never implies diagnosis certainty.
-    Cap at 90. Target 60-75 for typical incidents.
+    If no transaction data exists, confidence is very low regardless of other signals.
     """
+    # If no transactions are linked, confidence is near zero
+    # This covers brand new simulated incidents with no data yet
+    if context['blast_radius']['total_failed_transactions'] == 0:
+        return 10
+
     score = 0
 
     # +25 if failure location is identified
@@ -37,11 +41,8 @@ def calculate_confidence(context: dict) -> int:
     if context['historical_pattern']['recurring']:
         score += 10
 
-    # Hard cap at 90 — never implies full diagnosis
-    # Missing: logs, latency metrics, infra health, traces
-    # These are always absent in this context, so 90% is never justified
+    # Hard cap at 75
     return min(score, 75)
-
 
 def generate_summary(context: dict, incident_title: str) -> dict:
     confidence = calculate_confidence(context)
