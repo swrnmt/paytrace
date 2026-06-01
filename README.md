@@ -171,3 +171,14 @@ cd frontend
 npm install
 npm run dev
 ```
+## Changelog
+
+### V1.1
+- Simulated incidents now generate real blast radius data
+- Worsening logic accounts for incident age
+- Confidence score scales dynamically with context completeness  
+- Merchant-level breakdown included in chat context
+- Auto-resolve for incidents older than 48 hours
+
+### V1.0
+- Initial release
